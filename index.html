@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <!--
+      ⚠️ **這一行不能刪，也不能改成相對路徑。**
+
+      它必須以 "/" 開頭與結尾，否則 Flutter 在**深層路徑**（`/home`、
+      `/competition/<id>/books`）載入時會直接拋出
+      `The base href has to end with a "/" to work correctly` 並**中止啟動** ——
+      畫面全白、且**完全不發出任何 API 請求**，所以看起來像後端掛掉。
+      症狀是「只有重新載入子頁面才會壞，從首頁點進去都正常」。
+
+      ⚠️ 這裡原本的註解寫著「base href 由 flutter build 注入，勿手動寫死」，
+      **那是錯的**：Flutter **不會**注入這個標籤，它只會把模板裡既有的
+      `/readflix-student-web/` 佔位符**替換**成 `--base-href` 的值（預設 `/`）。
+      把標籤刪掉就沒有任何東西會被注入 —— 這正是 2026-10 實際發生的 bug，
+      由「截圖驗收」抓到（doc 11 §6.7）。
+
+      參考：flutter create 的 `templates/app/web/index.html.tmpl`。
+    -->
+    <base href="/readflix-student-web/" />
+
+    <meta charset="UTF-8" />
+    <meta content="IE=Edge" http-equiv="X-UA-Compatible" />
+    <meta
+      name="description"
+      content="Readflix — Hong Kong Inter-school Chinese Reading Competition"
+    />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+
+    <!-- 對應 tokens.css 的 --rf-orange -->
+    <meta name="theme-color" content="#ff6b2c" />
+
+    <title>Readflix</title>
+
+    <!--
+      注意（doc 07 §7.2）：
+      不要在這裡加 Google Fonts <link>。字型改為打包 asset（見 pubspec.yaml），
+      原因是離線不可用與嚴格 CSP 會壞（doc 04 §4「字型」列）。
+      但要知道：`fontFamilyFallback` 裡的 'Noto Sans TC' 未打包時，CanvasKit 仍會
+      在執行期向 fonts.gstatic.com 抓（doc 11 §6.6）—— 那是另一件事，不是這個 link。
+    -->
+    <link rel="manifest" href="manifest.json" />
+  </head>
+  <body>
+    <script src="flutter_bootstrap.js" async></script>
+  </body>
+</html>
