@@ -29477,7 +29477,7 @@ else{m=a.d
 if(m==null)m="Request failed"}throw A.h(A.aMt(n,m,j))},
 aMu(a,b,c){if(a.length!==0)return A.aHX(a)
 if(c.length!==0)return A.aHX(c)+"/api/v1"
-return A.aHX("http://16.162.188.180")+"/api/v1"},
+return A.aHX("https://16.162.188.180")+"/api/v1"},
 aHX(a){return B.c.eU(a,"/")?B.c.W(a,0,a.length-1):a},
 b9l(){var s,r,q,p,o,n,m=null,l=v.G.document.baseURI
 if(l==null)A.a9(A.dq("Please add a <base> element to your index.html"))
