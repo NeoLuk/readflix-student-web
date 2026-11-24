@@ -3938,8 +3938,7 @@ class default_DefaultViewManager {
   handleNextPrePaginated(forceRight, section, action) {
     let next;
     if (this.layout.name === "pre-paginated" && this.layout.divisor > 1) {
-      if (forceRight || section.index === 0) {
-        // First page (cover) should stand alone for pre-paginated books
+      if (forceRight) {
         return;
       }
       next = section.next();

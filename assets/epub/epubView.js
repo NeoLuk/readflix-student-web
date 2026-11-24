@@ -2530,7 +2530,24 @@ function search(q) {
 }
 
 function setSpread(spread) {
-  rendition.spread(spread);
+  if (!rendition) return;
+  var twoPages = spread && spread !== 'none';
+  twoPageSpread = !!twoPages;
+  var name = twoPages ? 'always' : 'none';
+  // 0 會讓窄螢幕也排兩頁。rendition.spread 把 0 當成沒傳。
+  var minSpreadWidth = twoPages ? 0 : 800;
+  rendition.settings.spread = name;
+  rendition.settings.minSpreadWidth = minSpreadWidth;
+  if (rendition._layout) {
+    rendition._layout.spread(name, minSpreadWidth);
+  }
+  if (rendition.manager) {
+    rendition.manager.updateLayout();
+  }
+  var location = rendition.location;
+  var start = location && location.start;
+  var target = start && (start.cfi || start.href);
+  if (target) rendition.display(target);
 }
 
 function setFlow(flow) {
@@ -3107,12 +3124,28 @@ function topPageBox(viewer) {
   };
 }
 
+var twoPageSpread = false;
+
+function pageAlignCss() {
+  var scroll = 'overflow-x:hidden!important;overflow-y:auto!important;';
+  var box = 'transform:none!important;position:static!important;width:100%!important;';
+  var image = '.page img{width:100%!important;height:auto!important;object-fit:contain!important;}';
+  if (!twoPageSpread) {
+    return 'html,body,.page{height:auto!important;' + scroll + 'overflow-anchor:none!important;}body{display:block!important;' + box + '}' + image;
+  }
+  // 圖比格子矮時垂直置中。比格子高時文件會變高，從頂部開始捲。
+  return 'html,body{height:auto!important;min-height:100%!important;margin:0!important;' + scroll + '}body{display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:stretch!important;' + box + '}.page{width:100%!important;height:auto!important;flex:0 0 auto!important;}' + image;
+}
+
 function pinPageTop(doc) {
-  if (!doc || doc.__readflixPinTop) return;
-  doc.__readflixPinTop = true;
-  var style = doc.createElement('style');
-  style.textContent = 'html,body,.page{height:auto!important;overflow-x:hidden!important;overflow-y:auto!important;overflow-anchor:none!important;}body{transform:none!important;position:static!important;width:100%!important;}.page img{width:100%!important;height:auto!important;object-fit:contain!important;}';
-  (doc.head || doc.documentElement).appendChild(style);
+  if (!doc) return;
+  var style = doc.getElementById('readflix-page-align');
+  if (!style) {
+    style = doc.createElement('style');
+    style.id = 'readflix-page-align';
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+  style.textContent = pageAlignCss();
   var frames = document.querySelectorAll('#viewer iframe');
   for (var i = 0; i < frames.length; i++) {
     try {
