@@ -6045,10 +6045,10 @@ class Contents {
    * @param {number} height
    */
   fit(width, height, section) {
-    // Size and ratio are owned by pinPageTop: the image keeps its intrinsic
-    // ratio at the viewer width, and the extra height scrolls.
+    // The page keeps its ratio. pinPageTop fits it inside the viewport
+    // and centers the leftover space.
     this.layoutStyle("paginated");
-    this.overflow("auto");
+    this.overflow("hidden");
     this.css("transform", "none");
     var properties = section && section.properties;
     if (properties && properties.indexOf("page-spread-left") !== -1) {

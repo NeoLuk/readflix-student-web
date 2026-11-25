@@ -31,6 +31,22 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
 
+    <!--
+      從主畫面開啟時走獨立 App，Safari 的上下導覽列不會出現（直向、橫向都一樣）。
+      iOS「加入主畫面」看的是下面的 apple meta；Android / Chrome 看
+      manifest.json 的 "display": "standalone"（已經設好，不要改成 fullscreen）。
+
+      狀態列維持 default。紙色是淺色，black-translucent 會把時間和電量畫成白字，
+      內容還會伸進瀏海。viewport-fit=cover 已經在，SafeArea 負責讓出安全區。
+
+      不要加 user-scalable=no 或 maximum-scale=1。iOS 10 起會忽略，
+      而且會關掉放大。這兩項也藏不了導覽列。
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Readflix" />
+
     <!-- 對應 tokens.css 的 --rf-orange -->
     <meta name="theme-color" content="#ff6b2c" />
 
@@ -44,6 +60,8 @@
       在執行期向 fonts.gstatic.com 抓（doc 11 §6.6）—— 那是另一件事，不是這個 link。
     -->
     <link rel="manifest" href="manifest.json" />
+    <!-- iOS 主畫面圖示不讀 manifest 的 icons，要這條。 -->
+    <link rel="apple-touch-icon" href="icons/Icon-192.png" />
   </head>
   <body>
     <script src="flutter_bootstrap.js" async></script>

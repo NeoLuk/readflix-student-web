@@ -1,5 +1,5 @@
 // CFI <-> XPath conversion utilities for the EPUB viewer.
-// Pure helpers extracted from epubView.js; loaded before it in swipe.html.
+// Loaded by swipe.html before the other viewer scripts.
 // They only depend on the globals `book`, `rendition` and `ePub`.
 
 function makeRangeCfi(a, b) {

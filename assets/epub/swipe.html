@@ -13,26 +13,37 @@
       html,
       body {
         height: 100%;
-        min-height: 0;
+        max-height: 100%;
         margin: 0;
+        overflow: hidden;
       }
 
       body {
+        /* examples.css 把 body 設成 absolute，而且 min-height 800px。
+           手機比 800 矮時，包住書和翻頁鈕的這一層就會整頁捲走。 */
+        position: relative;
         display: flex;
-        align-items: flex-start;
+        min-height: 0;
+        align-items: stretch;
         justify-content: flex-start;
       }
 
       #viewer {
         position: relative;
-        overflow: hidden;
+        flex: 1 1 auto;
+        align-self: stretch;
         width: 100%;
         height: 100%;
-        touch-action: pan-y;
+        min-height: 0;
+        min-width: 0;
+        margin: 0;
+        /* 書頁喺入面 fit center。呢一層連同左右翻頁鈕要釘住。
+           flex 子項預設 min-height:auto，會被內容撐開，所以要收成 0。 */
+        overflow: hidden;
+        touch-action: none;
         -webkit-user-select: none;
         user-select: none;
         -webkit-touch-callout: none;
-        margin: 5px auto;
         background: white;
       }
 
@@ -173,6 +184,17 @@
       </aside>
     </div>
     <script src="epub_cfi_utils.js"></script>
-    <script src="epubView.js"></script>
+    <script src="epub_state.js"></script>
+    <script src="epub_book.js"></script>
+    <script src="epub_touch.js"></script>
+    <script src="epub_selection.js"></script>
+    <script src="epub_contents.js"></script>
+    <script src="epub_footnotes.js"></script>
+    <script src="epub_annotations.js"></script>
+    <script src="epub_spread.js"></script>
+    <script src="epub_text.js"></script>
+    <script src="epub_selection_guard.js"></script>
+    <script src="epub_layout.js"></script>
+    <script src="epub_gestures.js"></script>
   </body>
 </html>
