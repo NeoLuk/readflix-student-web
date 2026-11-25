@@ -2541,13 +2541,37 @@ function setSpread(spread) {
   if (rendition._layout) {
     rendition._layout.spread(name, minSpreadWidth);
   }
-  if (rendition.manager) {
-    rendition.manager.updateLayout();
+  var manager = rendition.manager;
+  if (!manager) return;
+  // 不要 display()。那會先清掉所有頁再載入，畫面就一閃一閃。
+  manager.updateLayout();
+  syncSpreadViews(manager);
+  var frames = document.querySelectorAll('#viewer .epub-view iframe');
+  for (var i = 0; i < frames.length; i++) {
+    try {
+      pinPageTop(frames[i].contentDocument);
+    } catch (e) {}
   }
-  var location = rendition.location;
-  var start = location && location.start;
-  var target = start && (start.cfi || start.href);
-  if (target) rendition.display(target);
+}
+
+function syncSpreadViews(manager) {
+  var views = manager.views;
+  if (!views || !manager.layout) return;
+  var wantTwo = manager.layout.divisor > 1;
+  if (!wantTwo) {
+    while (views.length > 1) views.remove(views.last());
+    return;
+  }
+  if (views.length >= 2) return;
+  var first = views.first();
+  if (!first || !first.section || !manager.handleNextPrePaginated) return;
+  var adding = manager.handleNextPrePaginated(false, first.section, manager.append);
+  if (adding && adding.then) {
+    adding.then(function () {
+      views.show();
+      layoutSpreadScroll();
+    }, function () {});
+  }
 }
 
 function setFlow(flow) {
@@ -3127,14 +3151,14 @@ function topPageBox(viewer) {
 var twoPageSpread = false;
 
 function pageAlignCss() {
-  var scroll = 'overflow-x:hidden!important;overflow-y:auto!important;';
   var box = 'transform:none!important;position:static!important;width:100%!important;';
   var image = '.page img{width:100%!important;height:auto!important;object-fit:contain!important;}';
   if (!twoPageSpread) {
+    var scroll = 'overflow:hidden!important;';
     return 'html,body,.page{height:auto!important;' + scroll + 'overflow-anchor:none!important;}body{display:block!important;' + box + '}' + image;
   }
-  // 圖比格子矮時垂直置中。比格子高時文件會變高，從頂部開始捲。
-  return 'html,body{height:auto!important;min-height:100%!important;margin:0!important;' + scroll + '}body{display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:stretch!important;' + box + '}.page{width:100%!important;height:auto!important;flex:0 0 auto!important;}' + image;
+  // 圖比格子矮時在頁內垂直置中。比格子高時由外層容器一起捲，頁內不再各自捲。
+  return 'html,body{height:auto!important;min-height:100%!important;margin:0!important;overflow:hidden!important;}body{display:flex!important;flex-direction:column!important;justify-content:center!important;align-items:stretch!important;' + box + '}.page{width:100%!important;height:auto!important;flex:0 0 auto!important;}' + image;
 }
 
 function pinPageTop(doc) {
@@ -3152,6 +3176,150 @@ function pinPageTop(doc) {
       if (frames[i].contentDocument === doc) frames[i].scrolling = 'auto';
     } catch (e) {}
   }
+  bindSpreadScroll(doc);
+  layoutSpreadScroll();
+}
+
+var spreadScrollLock = false;
+var spreadFlick = 0;
+
+function spreadFrames() {
+  return document.querySelectorAll('#viewer .epub-view iframe');
+}
+
+function layoutSpreadScroll() {
+  var viewer = document.getElementById('viewer');
+  var container = viewer && viewer.querySelector('.epub-container');
+  if (!container) return;
+  var frames = spreadFrames();
+  // 單頁和雙頁都把圖拉高，放進同一個容器。手指落在容器上，才能左右翻頁、上下捲動。
+  // 落在頁面 iframe 裡時，iPhone 只肯捲動，不肯把橫向交給翻頁。
+  var slot = viewer.clientHeight || window.innerHeight;
+  container.style.height = slot + 'px';
+  container.style.overflowX = 'hidden';
+  container.style.overflowY = 'auto';
+  container.style.webkitOverflowScrolling = 'touch';
+  container.style.touchAction = 'pan-y';
+  container.style.scrollbarWidth = 'none';
+  var tallest = slot;
+  for (var j = 0; j < frames.length; j++) {
+    var frame = frames[j];
+    frame.style.pointerEvents = 'none';
+    frame.scrolling = 'no';
+    var doc = null;
+    try { doc = frame.contentDocument; } catch (e) {}
+    var img = doc && doc.querySelector('img');
+    var width = frame.clientWidth;
+    if (!width && container.clientWidth) {
+      width = container.clientWidth / Math.max(frames.length, 1);
+    }
+    if (img && img.naturalWidth && width) {
+      var h = width * img.naturalHeight / img.naturalWidth;
+      if (h > tallest) tallest = h;
+    }
+    if (img && !img.__readflixSpreadFit) {
+      img.__readflixSpreadFit = true;
+      img.addEventListener('load', layoutSpreadScroll);
+    }
+  }
+  for (var k = 0; k < frames.length; k++) {
+    frames[k].style.height = tallest + 'px';
+    var view = frames[k].parentElement;
+    if (view) view.style.height = tallest + 'px';
+  }
+}
+
+function maxSpreadScroll() {
+  var max = 0;
+  var frames = spreadFrames();
+  for (var i = 0; i < frames.length; i++) {
+    try {
+      var win = frames[i].contentWindow;
+      var doc = frames[i].contentDocument;
+      if (!win || !doc || !doc.documentElement) continue;
+      var room = doc.documentElement.scrollHeight - win.innerHeight;
+      if (room > max) max = room;
+    } catch (e) {}
+  }
+  return max > 0 ? max : 0;
+}
+
+function writeSpreadScroll(top) {
+  if (top < 0) top = 0;
+  var max = maxSpreadScroll();
+  if (top > max) top = max;
+  spreadScrollLock = true;
+  var frames = spreadFrames();
+  for (var i = 0; i < frames.length; i++) {
+    try {
+      var other = frames[i].contentWindow;
+      if (other) other.scrollTo(0, top);
+    } catch (e) {}
+  }
+  requestAnimationFrame(function () {
+    spreadScrollLock = false;
+  });
+  return top;
+}
+
+function stopSpreadFlick() {
+  spreadFlick += 1;
+}
+
+function startSpreadFlick(top, velocity) {
+  var token = ++spreadFlick;
+  var last = performance.now ? performance.now() : Date.now();
+  function frame(now) {
+    if (token !== spreadFlick || !twoPageSpread) return;
+    var dt = Math.min(32, now - last);
+    last = now;
+    velocity *= Math.pow(0.92, dt / 16);
+    if (Math.abs(velocity) < 0.03) return;
+    top = writeSpreadScroll(top + velocity * dt);
+    var max = maxSpreadScroll();
+    if (top <= 0 || top >= max) return;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+// 手指落在哪一頁，兩頁都移同一個距離。iPhone 不會在捲動中途接受另一頁的 scrollTo。
+function scrollSpreadWithTouch(touch) {
+  var drag = pageDrag;
+  if (!twoPageSpread || !drag || drag.animating || touch.identifier !== drag.pointerId) return false;
+  if (drag.axis === 'x') return false;
+  var dx = touch.screenX - drag.startX;
+  var dy = touch.screenY - drag.startY;
+  if (!drag.axis) {
+    if (Math.abs(dy) < 6 || Math.abs(dy) < Math.abs(dx)) return false;
+    drag.axis = 'y';
+  }
+  if (drag.axis !== 'y') return false;
+  var now = Date.now();
+  var dt = now - (drag.lastT || now);
+  if (dt > 0 && dt < 80) drag.velocity = (drag.lastY - touch.screenY) / dt;
+  drag.lastY = touch.screenY;
+  drag.lastT = now;
+  writeSpreadScroll(drag.scrollTop + (drag.startY - touch.screenY));
+  return true;
+}
+
+// 兩頁共用同一個上下位置。滑鼠滾輪或殘餘的原生捲動也抄到另一頁。
+function bindSpreadScroll(doc) {
+  if (!doc || doc.__readflixSpreadScroll) return;
+  var win = doc.defaultView;
+  if (!win) return;
+  doc.__readflixSpreadScroll = true;
+  win.addEventListener('scroll', function () {
+    if (!twoPageSpread || spreadScrollLock) return;
+    writeSpreadScroll(win.scrollY || 0);
+  }, { passive: true });
+  win.addEventListener('wheel', function (e) {
+    if (!twoPageSpread || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+    e.preventDefault();
+    stopSpreadFlick();
+    writeSpreadScroll((win.scrollY || 0) + e.deltaY);
+  }, { passive: false });
 }
 
 function firstImageUrl(section) {
@@ -3318,6 +3486,60 @@ function finishPageDrag(commit) {
   }, 180);
 }
 
+function beginPageDrag(id, x, y) {
+  if (pageDrag && pageDrag.animating) {
+    if (Date.now() - pageDrag.startedAt < 400) return;
+    pageDrag.animating = false;
+    settlePageDrag();
+  }
+  pageDrag = {
+    pointerId: id,
+    startX: x,
+    startY: y,
+    dx: 0,
+    width: pageDragWidth(),
+    direction: 0,
+    neighbor: null,
+    preview: null,
+    animating: false,
+    axis: '',
+    startedAt: Date.now()
+  };
+}
+
+// 橫向才算翻頁。回傳 true 代表瀏覽器不要再把這下當成捲動。
+function movePageDrag(id, x, y) {
+  var drag = pageDrag;
+  if (!drag || drag.animating || id !== drag.pointerId) return false;
+  var dx = x - drag.startX;
+  var dy = y - drag.startY;
+  if (!drag.axis) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) {
+      return Math.abs(dx) > Math.abs(dy);
+    }
+    drag.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+  }
+  if (drag.axis !== 'x') return false;
+  releaseStuckSelection();
+  var direction = dx < 0 ? -1 : 1;
+  if (drag.direction !== direction) ensurePagePreview(direction);
+  var limit = drag.neighbor ? drag.width : drag.width * 0.28;
+  drag.dx = Math.max(-limit, Math.min(limit, dx));
+  placePageDrag(drag.dx, false);
+  return true;
+}
+
+function endPageDrag(id) {
+  var drag = pageDrag;
+  if (!drag || drag.animating || id !== drag.pointerId) return;
+  if (drag.axis !== 'x') {
+    pageDrag = null;
+    return;
+  }
+  var commit = Math.abs(drag.dx) > Math.max(36, drag.width * 0.18);
+  finishPageDrag(commit);
+}
+
 function installPageGestures(doc, ignoreTouch) {
   if (!doc) return;
   var root = doc.documentElement || doc.body;
@@ -3332,69 +3554,60 @@ function installPageGestures(doc, ignoreTouch) {
     e.preventDefault();
   }, true);
   var style = doc.createElement('style');
-  style.textContent = 'img{-webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;}';
+  // pan-y：直向捲動仍交給瀏覽器。橫向要由 touchmove 的 preventDefault 接住，
+  // 否則 iPhone 會取消這下手勢，左右掃就換不了頁。
+  style.textContent = 'html,body{touch-action:pan-y;}img{-webkit-user-drag:none;user-select:none;-webkit-touch-callout:none;}';
   (doc.head || root).appendChild(style);
 
   root.addEventListener('pointerdown', function (e) {
+    if (e.pointerType === 'touch') return;
     if (contentsMenuOpen || isPageEdgeTarget(e)) return;
-    if (ignoreTouch && e.pointerType === 'touch') return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if (pageDrag && pageDrag.animating) {
-      if (Date.now() - pageDrag.startedAt < 400) return;
-      pageDrag.animating = false;
-      settlePageDrag();
-    }
-    pageDrag = {
-      pointerId: e.pointerId,
-      startX: e.screenX,
-      startY: e.screenY,
-      dx: 0,
-      width: pageDragWidth(),
-      direction: 0,
-      neighbor: null,
-      preview: null,
-      animating: false,
-      axis: '',
-      startedAt: Date.now()
-    };
+    beginPageDrag(e.pointerId, e.screenX, e.screenY);
   }, true);
   root.addEventListener('pointermove', function (e) {
-    var drag = pageDrag;
-    if (!drag || drag.animating || e.pointerId !== drag.pointerId) return;
-    var dx = e.screenX - drag.startX;
-    var dy = e.screenY - drag.startY;
-    if (!drag.axis) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-      drag.axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
-    }
-    if (drag.axis !== 'x') return;
-    e.preventDefault();
-    releaseStuckSelection();
-    var direction = dx < 0 ? -1 : 1;
-    if (drag.direction !== direction) ensurePagePreview(direction);
-    var limit = drag.neighbor ? drag.width : drag.width * 0.28;
-    drag.dx = Math.max(-limit, Math.min(limit, dx));
-    placePageDrag(drag.dx, false);
+    if (e.pointerType === 'touch') return;
+    if (movePageDrag(e.pointerId, e.screenX, e.screenY)) e.preventDefault();
   }, { capture: true, passive: false });
-  function endDrag(e) {
-    var drag = pageDrag;
-    if (!drag || drag.animating || e.pointerId !== drag.pointerId) return;
-    if (drag.axis !== 'x') {
-      pageDrag = null;
-      return;
-    }
-    var commit = Math.abs(drag.dx) > Math.max(36, drag.width * 0.18);
-    finishPageDrag(commit);
+  function endPointer(e) {
+    if (e.pointerType === 'touch') return;
+    endPageDrag(e.pointerId);
   }
-  root.addEventListener('pointerup', endDrag, true);
-  root.addEventListener('pointercancel', endDrag, true);
+  root.addEventListener('pointerup', endPointer, true);
+  root.addEventListener('pointercancel', endPointer, true);
   // 手指移出書頁先放開會收唔到 pointerup，狀態會一路卡着。
   var win = doc.defaultView || window;
-  win.addEventListener('pointerup', endDrag, true);
-  win.addEventListener('pointercancel', endDrag, true);
+  win.addEventListener('pointerup', endPointer, true);
+  win.addEventListener('pointercancel', endPointer, true);
   win.addEventListener('blur', function () {
     if (pageDrag && !pageDrag.animating) finishPageDrag(false);
   });
+
+  if (ignoreTouch) return;
+  root.addEventListener('touchstart', function (e) {
+    if (contentsMenuOpen || isPageEdgeTarget(e) || e.touches.length !== 1) return;
+    var t = e.touches[0];
+    stopSpreadFlick();
+    beginPageDrag(t.identifier, t.screenX, t.screenY);
+    if (!pageDrag || pageDrag.pointerId !== t.identifier) return;
+    var win = doc.defaultView;
+    pageDrag.scrollTop = win ? (win.scrollY || 0) : 0;
+    pageDrag.lastY = t.screenY;
+    pageDrag.lastT = Date.now();
+    pageDrag.velocity = 0;
+  }, { capture: true, passive: true });
+  root.addEventListener('touchmove', function (e) {
+    if (!e.touches.length) return;
+    var t = e.touches[0];
+    if (movePageDrag(t.identifier, t.screenX, t.screenY)) e.preventDefault();
+  }, { capture: true, passive: false });
+  function endTouch(e) {
+    var t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    endPageDrag(t.identifier);
+  }
+  root.addEventListener('touchend', endTouch, true);
+  root.addEventListener('touchcancel', endTouch, true);
 }
 
 function detectSwipe(el, func) {
